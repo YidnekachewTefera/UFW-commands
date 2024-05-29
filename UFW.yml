@@ -1,0 +1,136 @@
+---
+- name: Check and install UFW if not installed
+  hosts: all
+  become: yes
+  tasks:
+    - name: Check for firewalld existance on the server
+      stat:
+        path: /usr/sbin/firewall-cmd # Path to firewalld command
+      register: firewalld_check
+
+    - debug:
+        msg: "firewalld is installed"
+      when: firewalld_check.stat.exists # Check if file exists
+
+    - debug:
+        msg: "firewalld is not installed"
+      when: not firewalld_check.stat.exists # Check if file doesn't exist
+   
+    - name: Stop firewalld service (if running)
+      service:
+        name: firewalld
+        state: stopped
+        enabled: no
+      when: firewalld_check.stat.exists # Check if file exists
+
+    - name: Mask firewalld service (prevent automatic start)
+      service:
+        name: firewalld
+        enabled: masked
+      when: firewalld_check.stat.exists # Check if file exists
+
+    - name: Uninstall firewalld package
+      package:
+        name: firewalld
+        state: absent
+
+    - name: Check if UFW is installed
+      command: which ufw
+      register: ufw_installed
+      ignore_errors: yes
+    
+    - name: Print UFW installation status
+      debug:
+        msg: "UFW is installed"
+      when: ufw_installed.rc == 0
+
+    - name: Print UFW not installed message
+      debug:
+        msg: "UFW is not installed"
+      when: ufw_installed.rc != 0
+    
+    - name: Ensure EPEL repository is enabled
+      dnf:
+        name: https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+        state: present
+      when: ansible_os_family == 'RedHat'
+    
+    - name: Ensure UFW is installed
+      dnf:
+        name: ufw
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Install UFW on Debain Server
+      apt:
+        name: ufw
+        state: present
+      when: ufw_installed.rc != 0
+      when: ansible_os_family == 'Debian'
+
+    - name: Check if there are any iptables rules
+      command: iptables -L
+      register: iptables_rules
+
+    - name: Flush iptables rules
+      command: iptables -F
+      when: iptables_rules.stdout != "Chain INPUT (policy ACCEPT)\nChain FORWARD (policy ACCEPT)\nChain OUTPUT (policy ACCEPT)"
+
+    - name: Check iptables rules again
+      command: iptables -L
+      register: iptables_rules_after
+
+    - name: Display iptables status
+      debug:
+        msg: "iptables rules have been {{ 'flushed' if iptables_rules.stdout != iptables_rules_after.stdout else 'not changed' }}"
+    - name: Install git
+      apt:
+        name: git
+        state: present
+
+    - name: Clone the private GitHub repository
+      git:
+        repo: 'https://github.com/YidnekachewTefera/UFW-commands.git'
+        dest: /tmp/ufw-rules
+        update: yes
+        clone: yes
+        version: main
+        force: yes
+      environment:
+        GIT_ASKPASS: /usr/bin/echo
+        GIT_USERNAME: yidnekachewtefera
+        GIT_PASSWORD: "{{ github_token }}"
+
+    - name: Read the commands from the text file
+      slurp:
+        src: /tmp/ufw-rules/commands.txt
+      register: commands_file
+
+    - name: Decode the base64 content
+      set_fact:
+        commands_decoded: "{{ commands_file.content | b64decode }}"
+
+    - name: Split commands into a list
+      set_fact:
+        commands_list: "{{ commands_decoded.split('\n') }}"
+
+
+    - name: Execute commands
+      command: "{{ item }}"
+      with_items: "{{ commands_list }}"
+      register: command_results
+      ignore_errors: yes
+
+    - name: Debug command results
+      debug:
+        var: command_results
+        
+    - name: Check if UFW is enabled
+      ufw:
+        state: enabled
+      register: ufw_status
+      ignore_errors: true
+
+    - name: Display UFW status
+      debug:
+        msg: "UFW is {{ 'enabled' if ufw_status.changed else 'disabled' }}"

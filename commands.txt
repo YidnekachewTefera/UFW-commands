@@ -2,3 +2,4 @@ ufw --version
 ufw allow http/tcp
 ufw allow https/tcp
 ufw allow 123
+ufw allow 22/tcp
