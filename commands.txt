@@ -1,2 +1,5 @@
 apt update
 ufw --version
+ufw allow http/tcp
+ufw allow https/tcp
+ufw allow 123
