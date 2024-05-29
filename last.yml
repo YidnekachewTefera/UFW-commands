@@ -3,9 +3,9 @@
   hosts: all
   become: yes
   vars_files:
-         - vault.yml
+    - vault.yml
   tasks:
-
+     
     - name: Gather OS specific facts
       ansible.builtin.setup:
         filter: ansible_os_family
@@ -56,24 +56,24 @@
         msg: "UFW is not installed"
       when: ufw_installed.rc != 0
     
-    - name: Install EPEL repo
-      yum:
-        name: epel-release
+    - name: Ensure EPEL repository is enabled
+      dnf:
+        name: https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
         state: present
-      when: ansible_os_family == 'Rocky' 
+      when: ansible_facts['os_family'] == "RedHat"
     
     - name: Ensure UFW is installed
-      yum:
+      dnf:
         name: ufw
         state: present
-      when: ansible_facts['os_family'] == "Rocky"
+      when: ansible_facts['os_family'] == "RedHat"
 
     - name: Install UFW on Debain Server
       apt:
         name: ufw
         state: present
       when: ufw_installed.rc != 0
-      when: ansible_facts['os_family'] == "Debian"
+      when: ansible_facts['os_family'] == "Debain"
 
     - name: Check if there are any iptables rules
       command: iptables -L
@@ -90,20 +90,16 @@
     - name: Display iptables status
       debug:
         msg: "iptables rules have been {{ 'flushed' if iptables_rules.stdout != iptables_rules_after.stdout else 'not changed' }}"
-
-
-    - name: Ensure Git is installed on Debian-based systems
+    - name: Install git
       apt:
         name: git
         state: present
-      when: ansible_os_family == 'Debian'
-
-    - name: Ensure Git is installed on Red Hat-based systems
-      dnf:
+      when: ansible_facts['os_family'] == "Debain"
+    - name: Install git
+      yum:
         name: git
         state: present
-      when: ansible_os_family == 'RedHat'
-
+      when: ansible_facts['os_family'] == "RedHat"
     - name: Clone the private GitHub repository
       git:
         repo: 'https://github.com/YidnekachewTefera/UFW-commands.git'
@@ -131,6 +127,7 @@
         commands_list: "{{ commands_decoded.split('\n') }}"
 
 
+
     - name: Execute commands
       command: "{{ item }}"
       with_items: "{{ commands_list }}"
@@ -140,7 +137,7 @@
     - name: Debug command results
       debug:
         var: command_results
-        
+
     - name: Check if UFW is enabled
       ufw:
         state: enabled
